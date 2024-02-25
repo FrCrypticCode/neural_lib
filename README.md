@@ -1,2 +1,4 @@
 # neural_lib
-Little librarie to make neural network
+Little library to make neural network
+
+Open to upgrades
