@@ -50,12 +50,12 @@ impl Layer{
         return layer
     }
     /// Calculate the Weighted Sum 
-    fn sum_pond(&self,x:&Vec<i32>)->f64{
-        let mut sum:f64 = 0.0;
+    fn sum_pond(&self,x:&Vec<f64>)->Vec<f64>{
+        let mut prop:Vec<f64> = vec![];
         for (id,n) in self.neurons.iter().enumerate(){
-            sum += x[id] as f64 * n.weight + n.bias; 
+            prop.push(x[id] * n.weight + n.bias); 
         }
-        return sum
+        return prop
     }
 }
 
@@ -72,79 +72,89 @@ impl Default for Activate{  // Default Status => Sigmoid function
     }
 }
 
-fn activate(net:&Layer,x:&Vec<i32>, act:Activate)->Result<f64,String>{
-    let sum = net.sum_pond(x);
-    match act{
-        Activate::Sig=>{return Ok(sigmoid(sum))},
-        Activate::Rel=>{return Ok(relu(sum))},
-        Activate::Tan=>{return Ok(tanh(sum))}
+fn activate(net:&Layer,x:&Vec<f64>,act:&Activate)->Vec<f64>{
+    let mut sum = net.sum_pond(x);
+    for r in sum.iter_mut(){
+        match act{
+            Activate::Sig=>{sigmoid(r)},
+            Activate::Rel=>{relu(r)},
+            Activate::Tan=>{tanh(r)}
+        }
     }
-
+    return sum
 }
 
-fn sigmoid(x:f64)->f64{
-    return 1.0/(1.0+(-x).exp())
+fn sigmoid(x:&mut f64){
+    *x = 1.0/(1.0+(-*x).exp());
 } 
 
-fn relu(x:f64)->f64{
-    if x > 0.0{
-        return x
-    }
-    else{
-        return 0.0
+fn relu(x:&mut f64){
+    if *x < 0.0{
+        *x = 0.0;
     }
 }
 
-fn tanh(x:f64)->f64{
-    return ((2.0 * x).exp()-1.0) / ((2.0 * x).exp()+1.0)
+fn tanh(x:&mut f64){
+    *x = ((2.0 * *x).exp()-1.0) / ((2.0 * *x).exp()+1.0);
 }
 
 /// Define a Neural Network
-struct Network{
-    layers:Vec<Layer>
+pub struct Network{
+    pub inputs:Vec<f64>,
+    layers:Vec<Layer>,
+    pub output:Layer
 }
 impl Network{
-    fn new(nb_lay:usize,lays_params:Vec<Vec<(f64,f64)>>,lays_fn:Vec<Activate>)->Network{
+    pub fn new(nb_lay:usize,lays_params:Vec<Vec<(f64,f64)>>,lays_fn:Vec<Activate>)->Network{
         let mut lays:Vec<Layer> = Vec::new();
         for l in 0..nb_lay{
             lays.push(Layer::new(&lays_fn[l], &lays_params[l]));
         }
-        return Network { layers: lays};
+        let mut output = vec![];
+        output.push((0.5,0.5));
+        return Network { inputs:vec![],layers: lays,output:Layer::new(&Activate::Sig,&output)};
     }
-    fn default(nb_lay:usize,nb_n:u32,lays_fn:Vec<Activate>)->Network{
+    pub fn default(nb_lay:usize,nb_n:u32,lays_fn:Vec<Activate>)->Network{
         let mut lays:Vec<Layer> = Vec::new();
         for l in 0..nb_lay{
             lays.push(Layer::default(nb_n,&lays_fn[l]));
         }
-        return Network { layers: lays};
+        return Network { inputs:vec![],layers: lays,output:Layer::default(1, &Activate::Sig)};
     }
-    /*
+
+    /// Launching a prediction with values -> This function can be call manually or by the training session
+    pub fn prediction(&mut self)->Vec<f64>{   
+        let mut res = self.inputs.clone();// Call a result on an entry
+        // Propagation on hidden layers
+        for layer in self.layers.iter_mut(){
+            res = activate(layer,&res,&layer.act);
+        }
+        // Propagation on output layer
+        res = activate(&self.output, &res, &self.output.act);
+        return res
+    } 
+
     /// Initiate a training session
     /// You can specifie the inputs and the number of repetitions from the nb variable
-    pub fn train(&mut self, inputs:&Vec<Vec<i32>>,targets:&Vec<f64>,learning_rate:f64,nb:usize){
-        for _ in 0..nb{
+    pub fn train(&mut self, inputs:&Vec<Vec<f64>>,targets:&Vec<f64>,learning_rate:f64,nb:usize){
+        for _ in 0..nb{  
             for (input,target) in inputs.iter().zip(targets.iter()){
+                self.inputs = input.to_owned();
                 self.train_single(input, *target, learning_rate);
             }
         }
     }
 
-    fn train_single(&mut self, input:&Vec<i32>, target:f64, learning_rate:f64){
-        let output = self.prediction(input,self.act.clone()).unwrap();
-        let error = target - output;
-        for (neuron,x) in self.neurons.iter_mut().zip(input.iter()){
-            neuron.weight += learning_rate * error * output * (1.0-output) * *x as f64;
-            neuron.bias += learning_rate * error * output * (1.0-output);
+    fn train_single(&mut self, input:&Vec<f64>, target:f64, learning_rate:f64){
+        let output = self.prediction();
+        let error = target - output[0];
+        for layer in self.layers.iter_mut(){
+            for (neuron,x) in layer.neurons.iter_mut().zip(input.iter()){
+                neuron.weight += learning_rate * error * output[0] * (1.0-output[0]) * *x as f64;
+                neuron.bias += learning_rate * error * output[0] * (1.0-output[0]);
+            }
         }
     }
-
-    /// Launching a prediction with values -> This function can be call manually or by the training session
-    pub fn prediction(&self, input:&Vec<i32>, act:Activate)->Result<f64,String>{   // Call a result on an entry
-        match activate(self,input,act){
-            Ok(x)=>{return Ok(x)},
-            Err(err)=>{return Err(err)}
-        }
-    } */
 }
 
 enum Class{
