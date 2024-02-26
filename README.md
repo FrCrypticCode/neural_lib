@@ -1,9 +1,8 @@
 Neural_lib
-|------------------------|
-|!!! WORK IN PROGRESS !!!|
-|------------------------|
-You can define layers et neural network with this small library.
-As we know, this is a piece of **** to understand and i would make a good and simple lib to improve our code.
+
+!!! WORK IN PROGRESS !!!
+
+Use to define neural network with propagation and learning.
 
 ------------------------------------------------------------------------------------------------------------
 Update in progress :

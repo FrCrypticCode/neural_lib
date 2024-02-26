@@ -1,22 +1,25 @@
 #![no_main]
+
 //! # Neural Lib
 //! In Progress !!! -> Some fixes in load  
 //! This is a small library to make group of neurons.
 //! Every group is create with own parameters and the functions required to make predictions and training
 
 /// A Neuron is defined by a weight and an impact. Every value passed in is change by the property of the neuron
+#[derive(Clone,Copy)]
 struct Neuron{
     weight: f64,
-    bias:f64
+    bias:f64,
+    output:f64
 }
 impl Default for Neuron{
     fn default() -> Self {
-        return Neuron{weight:0.5,bias:0.5}
+        return Neuron{weight:0.5,bias:0.5,output:0.0}
     }
 }
 impl Neuron{
     fn new(weight:f64,bias:f64)->Self{
-        return Neuron{weight:weight,bias:bias}
+        return Neuron{weight:weight,bias:bias,output:0.0}
     }
 }
 
@@ -27,7 +30,7 @@ pub struct Layer{
     act:Activate
 }
 impl Layer{
-    /// Add layer, need to a vec of Neurons parameters and type of function
+    /// Add layer, need to a vec of Neurons parameters(tuple f64,f46) and type of function
     pub fn new(fnact:&Activate,param:&Vec<(f64,f64)>)->Self{ 
         let mut network = Layer{
             neurons: Vec::with_capacity(param.len() as usize),
@@ -50,7 +53,7 @@ impl Layer{
         return layer
     }
     /// Calculate the Weighted Sum 
-    fn sum_pond(&self,x:&Vec<f64>)->Vec<f64>{
+    fn sum_pond(&mut self,x:&Vec<f64>)->Vec<f64>{
         let mut prop:Vec<f64> = vec![];
         for (id,n) in self.neurons.iter().enumerate(){
             prop.push(x[id] * n.weight + n.bias); 
@@ -72,14 +75,15 @@ impl Default for Activate{  // Default Status => Sigmoid function
     }
 }
 
-fn activate(net:&Layer,x:&Vec<f64>,act:&Activate)->Vec<f64>{
+fn activate(net:&mut Layer,x:&Vec<f64>)->Vec<f64>{
     let mut sum = net.sum_pond(x);
-    for r in sum.iter_mut(){
-        match act{
+    for (id,r) in sum.iter_mut().enumerate(){
+        match net.act{
             Activate::Sig=>{sigmoid(r)},
             Activate::Rel=>{relu(r)},
             Activate::Tan=>{tanh(r)}
         }
+        net.neurons[id].output = *r;
     }
     return sum
 }
@@ -127,10 +131,10 @@ impl Network{
         let mut res = self.inputs.clone();// Call a result on an entry
         // Propagation on hidden layers
         for layer in self.layers.iter_mut(){
-            res = activate(layer,&res,&layer.act);
+            res = activate(layer,&res);
         }
         // Propagation on output layer
-        res = activate(&self.output, &res, &self.output.act);
+        res = activate(&mut self.output, &res);
         return res
     } 
 
@@ -140,20 +144,58 @@ impl Network{
         for _ in 0..nb{  
             for (input,target) in inputs.iter().zip(targets.iter()){
                 self.inputs = input.to_owned();
-                self.train_single(input, *target, learning_rate);
+                self.train_single(*target, learning_rate);
             }
         }
     }
 
-    fn train_single(&mut self, input:&Vec<f64>, target:f64, learning_rate:f64){
+    fn train_single(&mut self, target:f64, learning_rate:f64){
         let output = self.prediction();
         let error = target - output[0];
-        for layer in self.layers.iter_mut(){
-            for (neuron,x) in layer.neurons.iter_mut().zip(input.iter()){
-                neuron.weight += learning_rate * error * output[0] * (1.0-output[0]) * *x as f64;
-                neuron.bias += learning_rate * error * output[0] * (1.0-output[0]);
+
+        for neuron in self.output.neurons.iter_mut(){
+            let neuron_error = neuron.weight * error * neuron.output * (1.0 - neuron.output);
+            neuron.weight += learning_rate * neuron_error * neuron.output;
+            neuron.bias += learning_rate * neuron_error;
+        }
+
+        for layer in self.layers.iter_mut().rev(){
+            for neuron in layer.neurons.iter_mut(){
+                let neuron_error= neuron.weight * error * neuron.output* (1.0-neuron.output);
+                neuron.weight += learning_rate * neuron_error * neuron.output;
+                neuron.bias += learning_rate*neuron_error;
             }
         }
+    }
+    /// Generate a file which contains the parameters of your neurons and layers
+    pub fn output(&self,n_file:&str)->Result<(),Error>{
+        match fs::OpenOptions::new().create_new(true).write(true).open(n_file){
+            Ok(mut f)=>{
+                f.write_all("Schematic Neural Network\n".as_bytes());
+                for (id,layer) in self.layers.iter().enumerate(){
+                    f.write_all(format!("HiddenLayer :{}\n",id).as_bytes());
+                    match layer.act{
+                        Activate::Sig=>{f.write_all("Sigmoid fn\n".as_bytes());}
+                        Activate::Rel=>{f.write_all("ReLu fn\n".as_bytes());}
+                        Activate::Tan=>{f.write_all("Tangente fn\n".as_bytes());}
+                    }
+                    for n in layer.neurons.iter(){
+                        f.write_all(format!("[{}:{}] ",n.weight,n.bias).as_bytes());
+                    }
+                    f.write_all("\n".as_bytes());
+                }
+                f.write_all(format!("OutputLayer\n").as_bytes());
+                for n in self.output.neurons.iter(){
+                    f.write_all(format!("[{}:{}] ",n.weight,n.bias).as_bytes());
+                }
+                f.write_all("\n".as_bytes());
+                return Ok(())
+            },
+            Err(err)=>{
+                return Err(err)
+            }
+        }
+        
     }
 }
 
@@ -161,3 +203,5 @@ enum Class{
     Binary,
     MultiClass
 }
+
+use std::{fs, io::{Error, Read, Write}};
